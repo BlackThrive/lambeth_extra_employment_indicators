@@ -41,21 +41,21 @@ The script uses the following R packages. These need to be installed using <b>in
 
 ### Data
 
-**employment_rate_to_jun_21.csv**: Employment rate data 
+**data/employment_rate_to_jun_21.csv**: Employment rate data 
 
-**unemployment_rate_to_jun_21.csv**: Unemployment rate data
+**data/unemployment_rate_to_jun_21.csv**: Unemployment rate data
 
-**industry_by_ethnicity_to_jun_21.csv**: Industry by ethnicity data
+**data/industry_by_ethnicity_to_jun_21.csv**: Industry by ethnicity data
 
-**occupation_by_ethnicity_to_jun_21.csv**: Occupation by ethnicity data
+**data/occupation_by_ethnicity_to_jun_21.csv**: Occupation by ethnicity data
 
-**employment_data.csv**: Processed employment rate for reference/tables etc.
+**data/employment_data.csv**: Processed employment rate for reference/tables etc.
 
-**unemployment_data.csv**: Processed unemployment rate for reference/tables etc.
+**data/unemployment_data.csv**: Processed unemployment rate for reference/tables etc.
 
-**occupation_data.csv**: Processed employment by occupation by ethnicity for reference/tables etc.
+**data/occupation_data.csv**: Processed employment by occupation by ethnicity for reference/tables etc.
 
-**industry_data.csv**: Processed employment by industry by ethnicity for reference/tables etc.
+**data/industry_data.csv**: Processed employment by industry by ethnicity for reference/tables etc.
 
 ### Scripts
 
