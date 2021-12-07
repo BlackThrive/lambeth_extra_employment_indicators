@@ -1,0 +1,425 @@
+---
+title: "Shared Measurement System Employment Indicators"
+author: "Black Thrive Global"
+date: "December 2021"
+output:
+  pdf_document: default
+  html_document: default
+header-includes: 
+  \usepackage{titling}
+  \pretitle{\begin{center}\LARGE\includegraphics[width=6cm]{../images/btg_logo.png}\\[\bigskipamount]}
+  \posttitle{\end{center}}
+  \usepackage{lscape}
+  \newcommand{\blandscape}{\begin{landscape}}
+  \newcommand{\elandscape}{\end{landscape}}
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r include = FALSE}
+library(tidyverse)
+library(gmodels)
+library(epitools)
+library(kableExtra)
+library(ggrepel)
+```
+
+```{r include = FALSE}
+colours <- c("black","#ff9000")
+```
+
+```{r rr_function, include = FALSE}
+rr_from_df <- function(df, name){
+  # function takes dfs made earlier, transforms in matrices, and creates risk
+  # ratios and associated confidence intervals
+  # 'name' is the name of the indicator
+  mat <- matrix(c(df[2,2],
+                  df[2,1],
+                  df[1,2],
+                  df[1,1]), 2, 2)
+  df_out <- data.frame("indicator" = name,
+                     "rr" = riskratio(mat)[["measure"]][2,1],
+                     "ci_low" = riskratio(mat)[["measure"]][2,2],
+                     "ci_upp" = riskratio(mat)[["measure"]][2,3])
+  return(df_out)
+}
+```
+
+# Employment Rate
+
+```{r include = FALSE}
+employment_data <- read.csv("../data/employment_rate_to_jun_21.csv")
+
+employment_data$sex <- factor(employment_data$sex, levels = c("Overall", "Female", "Male"))
+
+# overall
+temp <- subset(employment_data, sex == "Overall")
+
+black <- data.frame("black" = c("employed" = temp[which(temp$ethnicity == "Black"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "Black"), "denominator"] - temp[which(temp$ethnicity == "Black"), "numerator"]))
+
+white <- data.frame("white" = c("employed" = temp[which(temp$ethnicity == "White"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "White"), "denominator"] - temp[which(temp$ethnicity == "White"), "numerator"]))
+
+bw_mat <- as.matrix(cbind(black, white))
+
+xtab_employment_overall <- CrossTable(bw_mat, fisher = T, chisq = T, expected = T)
+rr_employment_overall <- rr_from_df(as.data.frame(bw_mat), "Overall employment") # get risk ratio
+
+# male
+temp <- subset(employment_data, sex == "Male")
+
+black <- data.frame("black" = c("employed" = temp[which(temp$ethnicity == "Black"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "Black"), "denominator"] - temp[which(temp$ethnicity == "Black"), "numerator"]))
+
+white <- data.frame("white" = c("employed" = temp[which(temp$ethnicity == "White"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "White"), "denominator"] - temp[which(temp$ethnicity == "White"), "numerator"]))
+
+bw_mat <- as.matrix(cbind(black, white))
+
+xtab_employment_male <- CrossTable(bw_mat, fisher = T, chisq = T, expected = T)
+rr_employment_male <- rr_from_df(as.data.frame(bw_mat), "Male employment") # get risk ratio
+
+# female
+temp <- subset(employment_data, sex == "Female")
+
+black <- data.frame("black" = c("employed" = temp[which(temp$ethnicity == "Black"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "Black"), "denominator"] - temp[which(temp$ethnicity == "Black"), "numerator"]))
+
+white <- data.frame("white" = c("employed" = temp[which(temp$ethnicity == "White"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "White"), "denominator"] - temp[which(temp$ethnicity == "White"), "numerator"]))
+
+bw_mat <- as.matrix(cbind(black, white))
+rr_employment_female <- rr_from_df(as.data.frame(bw_mat), "Female employment") # get risk ratio
+
+xtab_employment_female <- CrossTable(bw_mat, fisher = T, chisq = T, expected = T)
+
+```
+
+```{r employment_plot}
+
+employment_data <- employment_data %>%
+  rename(
+    Ethnicity = ethnicity
+  )
+
+employment_data$Ethnicity <- as.factor(employment_data$Ethnicity)
+# set up values for line
+var <- employment_data$percentage
+maxval <- max(var) * 1.1
+lowval <- maxval - (maxval * .02)
+txtval <- maxval * 1.1
+lpos_1 <- which(levels(employment_data$sex) == "Overall") - 0.25
+rpos_1 <- which(levels(employment_data$sex) == "Overall") + 0.25
+mpos_1 <- (lpos_1 + rpos_1) / 2
+line_1_df <- data.frame(a = c(lpos_1, lpos_1, rpos_1, rpos_1), b = c(lowval, maxval, maxval, lowval)) # df for line
+lpos_2 <- which(levels(employment_data$sex) == "Female") - 0.25
+rpos_2 <- which(levels(employment_data$sex) == "Female") + 0.25
+mpos_2 <- (lpos_2 + rpos_2) / 2
+line_2_df <- data.frame(a = c(lpos_2, lpos_2, rpos_2, rpos_2), b = c(lowval, maxval, maxval, lowval)) # df for line
+lpos_3 <- which(levels(employment_data$sex) == "Male") - 0.25
+rpos_3 <- which(levels(employment_data$sex) == "Male") + 0.25
+mpos_3 <- (lpos_3 + rpos_3) / 2
+line_3_df <- data.frame(a = c(lpos_3, lpos_3, rpos_3, rpos_3), b = c(lowval, maxval, maxval, lowval)) # df for line
+
+rr_1 <- round(rr_employment_overall$rr, 2)
+rr_2 <- round(rr_employment_female$rr, 2)
+rr_3 <- round(rr_employment_male$rr, 2)
+
+rr_ci_low_1 <- round(rr_employment_overall$ci_low,2)
+rr_ci_low_2 <- round(rr_employment_female$ci_low,2)
+rr_ci_low_3 <- round(rr_employment_male$ci_low,2)
+
+rr_ci_upp_1 <- round(rr_employment_overall$ci_upp,2)
+rr_ci_upp_2 <- round(rr_employment_female$ci_upp,2)
+rr_ci_upp_3 <- round(rr_employment_male$ci_upp,2)
+
+dodge_val = 1 
+
+ggplot(employment_data, aes(sex, percentage, fill = Ethnicity, group = Ethnicity)) +
+  geom_col(position = position_dodge(width = dodge_val)) +
+  theme_bw() +
+  theme(
+    plot.caption = element_text(face = "italic"),
+    axis.title.x = element_blank()) + 
+  geom_label(aes(label = paste0(round(percentage, 2), "%")), position = position_dodge(width = dodge_val), fill = "white") +
+  ylab("Percentage") +
+  geom_line(inherit.aes = F, data = line_1_df, aes(a, b)) +
+  geom_line(inherit.aes = F, data = line_2_df, aes(a, b)) +
+  geom_line(inherit.aes = F, data = line_3_df, aes(a, b)) +
+  annotate("text", x = mpos_1, y = txtval, label = paste0("RR = ", rr_1, "\n[", rr_ci_low_1, " - ", rr_ci_upp_1,"]")) +
+  annotate("text", x = mpos_2, y = txtval, label = paste0("RR = ", rr_2, "\n[", rr_ci_low_2, " - ", rr_ci_upp_2,"]")) +
+  annotate("text", x = mpos_3, y = txtval, label = paste0("RR = ", rr_3, "\n[", rr_ci_low_3, " - ", rr_ci_upp_3,"]")) +
+  scale_y_continuous(limits = c(0, maxval * 1.15)) +
+  labs(caption = "Note. RR = Relative risk ratio \nValues in brackets represent 95% confidence interval") +
+  scale_fill_manual(values = colours) +
+  ggtitle("Employment rate for Black and White individuals in Lambeth \nJuly 2020 - June 2021")
+
+ggsave("../images/employment_rate.png", width = 7, height = 5)
+```
+
+```{r}
+table_data <- employment_data %>%
+  mutate(
+    percentage = round(percentage, 2),
+    sex = as.factor(sex)
+  ) %>%
+  select(sex, everything())
+  
+
+table_data <- table_data[c(order(table_data$sex, table_data$Ethnicity)),]
+
+write_csv(table_data, file = "../data/employment_data.csv")
+
+table_data %>%
+  kable(caption = "Employment rate statistics", col.names = c("Sex", "Ethnicity", "Number employed","Population","Percentage employed"), row.names = F) %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+
+\clearpage
+\newpage
+
+# Unemployment Rate
+
+```{r include = FALSE}
+unemployment_data <- read.csv("../data/unemployment_rate_to_jun_21.csv")
+
+unemployment_data$sex <- factor(unemployment_data$sex, levels = c("Overall", "Female", "Male"))
+
+# overall
+temp <- subset(unemployment_data, sex == "Overall")
+
+black <- data.frame("black" = c("employed" = temp[which(temp$ethnicity == "Black"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "Black"), "denominator"] - temp[which(temp$ethnicity == "Black"), "numerator"]))
+
+white <- data.frame("white" = c("employed" = temp[which(temp$ethnicity == "White"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "White"), "denominator"] - temp[which(temp$ethnicity == "White"), "numerator"]))
+
+bw_mat <- as.matrix(cbind(black, white))
+
+xtab_unemployment_overall <- CrossTable(bw_mat, fisher = T, chisq = T, expected = T)
+rr_unemployment_overall <- rr_from_df(as.data.frame(bw_mat), "Overall unemployment") # get risk ratio
+
+# male
+temp <- subset(unemployment_data, sex == "Male")
+
+black <- data.frame("black" = c("employed" = temp[which(temp$ethnicity == "Black"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "Black"), "denominator"] - temp[which(temp$ethnicity == "Black"), "numerator"]))
+
+white <- data.frame("white" = c("employed" = temp[which(temp$ethnicity == "White"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "White"), "denominator"] - temp[which(temp$ethnicity == "White"), "numerator"]))
+
+bw_mat <- as.matrix(cbind(black, white))
+
+xtab_unemployment_male <- CrossTable(bw_mat, fisher = T, chisq = T, expected = T)
+rr_unemployment_male <- rr_from_df(as.data.frame(bw_mat), "Male unemployment") # get risk ratio
+
+# female
+temp <- subset(unemployment_data, sex == "Female")
+
+black <- data.frame("black" = c("employed" = temp[which(temp$ethnicity == "Black"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "Black"), "denominator"] - temp[which(temp$ethnicity == "Black"), "numerator"]))
+
+white <- data.frame("white" = c("employed" = temp[which(temp$ethnicity == "White"), "numerator"], "not_employed" = temp[which(temp$ethnicity == "White"), "denominator"] - temp[which(temp$ethnicity == "White"), "numerator"]))
+
+bw_mat <- as.matrix(cbind(black, white))
+
+xtab_ununemployment_female <- CrossTable(bw_mat, fisher = T, chisq = T, expected = T)
+rr_unemployment_female <- rr_from_df(as.data.frame(bw_mat), "Female unemployment") # get risk ratio
+```
+
+```{r unemployment_plot}
+unemployment_data <- unemployment_data %>%
+  rename(
+    Ethnicity = ethnicity
+  )
+
+unemployment_data$Ethnicity <- as.factor(unemployment_data$Ethnicity)
+# set up values for line
+var <- unemployment_data$percentage
+maxval <- max(var) * 1.1
+lowval <- maxval - (maxval * .02)
+txtval <- maxval * 1.1
+lpos_1 <- which(levels(unemployment_data$sex) == "Overall") - 0.25
+rpos_1 <- which(levels(unemployment_data$sex) == "Overall") + 0.25
+mpos_1 <- (lpos_1 + rpos_1) / 2
+line_1_df <- data.frame(a = c(lpos_1, lpos_1, rpos_1, rpos_1), b = c(lowval, maxval, maxval, lowval)) # df for line
+lpos_2 <- which(levels(unemployment_data$sex) == "Female") - 0.25
+rpos_2 <- which(levels(unemployment_data$sex) == "Female") + 0.25
+mpos_2 <- (lpos_2 + rpos_2) / 2
+line_2_df <- data.frame(a = c(lpos_2, lpos_2, rpos_2, rpos_2), b = c(lowval, maxval, maxval, lowval)) # df for line
+lpos_3 <- which(levels(unemployment_data$sex) == "Male") - 0.25
+rpos_3 <- which(levels(unemployment_data$sex) == "Male") + 0.25
+mpos_3 <- (lpos_3 + rpos_3) / 2
+line_3_df <- data.frame(a = c(lpos_3, lpos_3, rpos_3, rpos_3), b = c(lowval, maxval, maxval, lowval)) # df for line
+
+rr_1 <- round(rr_unemployment_overall$rr, 2)
+rr_2 <- round(rr_unemployment_female$rr, 2)
+rr_3 <- round(rr_unemployment_male$rr, 2)
+
+rr_ci_low_1 <- round(rr_unemployment_overall$ci_low,2)
+rr_ci_low_2 <- round(rr_unemployment_female$ci_low,2)
+rr_ci_low_3 <- round(rr_unemployment_male$ci_low,2)
+
+rr_ci_upp_1 <- round(rr_unemployment_overall$ci_upp,2)
+rr_ci_upp_2 <- round(rr_unemployment_female$ci_upp,2)
+rr_ci_upp_3 <- round(rr_unemployment_male$ci_upp,2)
+
+dodge_val = 1 
+
+ggplot(unemployment_data, aes(sex, percentage, fill = Ethnicity, group = Ethnicity)) +
+  geom_col(position = position_dodge(width = dodge_val)) +
+  theme_bw() +
+  theme(
+    plot.caption = element_text(face = "italic"),
+    axis.title.x = element_blank()) + 
+  geom_label(aes(label = paste0(round(percentage, 2), "%")), position = position_dodge(width = dodge_val), fill = "white") +
+  ylab("Percentage") +
+  geom_line(inherit.aes = F, data = line_1_df, aes(a, b)) +
+  geom_line(inherit.aes = F, data = line_2_df, aes(a, b)) +
+  geom_line(inherit.aes = F, data = line_3_df, aes(a, b)) +
+  annotate("text", x = mpos_1, y = txtval, label = paste0("RR = ", rr_1, "\n[", rr_ci_low_1, " - ", rr_ci_upp_1,"]")) +
+  annotate("text", x = mpos_2, y = txtval, label = paste0("RR = ", rr_2, "\n[", rr_ci_low_2, " - ", rr_ci_upp_2,"]")) +
+  annotate("text", x = mpos_3, y = txtval, label = paste0("RR = ", rr_3, "\n[", rr_ci_low_3, " - ", rr_ci_upp_3,"]")) +
+  scale_y_continuous(limits = c(0, maxval * 1.15)) +
+  labs(caption = "Note. RR = Relative risk ratio \nValues in brackets represent 95% confidence interval") +
+  scale_fill_manual(values = colours) +
+  ggtitle("Unemployment rate for Black and White individuals in Lambeth \nJuly 2020 - June 2021")
+
+ggsave("../images/unemployment_rate.png", width = 7, height = 5)
+
+```
+
+
+```{r}
+table_data <- unemployment_data %>%
+  mutate(
+    percentage = round(percentage, 2),
+    Ethnicity = as.factor(Ethnicity),
+    sex = as.factor(sex)
+  ) %>%
+  select(sex, everything())
+  
+table_data <- table_data[c(order(table_data$sex, table_data$Ethnicity)),]
+
+write_csv(table_data, file = "../data/unemployment_data.csv")
+
+table_data %>%
+  kable(caption = "Unemployment rate statistics", col.names = c("Sex", "Ethnicity", "Number unemployed","Population","Percentage unemployed"), row.names = F) %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+<!-- \clearpage -->
+<!-- \newpage  -->
+
+\blandscape
+
+# Industry by ethnicity
+
+```{r fig.align = 'center', fig.width = 6, fig.height = 6}
+industry_data <- read.csv("../data/industry_by_ethnicity_to_jun_21.csv")
+
+plot_data <- industry_data
+
+plot_data <- plot_data[rowSums(is.na(plot_data)) != ncol(plot_data) - 3,]
+plot_data <- plot_data[-c(which(plot_data$Industry == "Total services")),]
+
+dodge_val = 1 
+# plot_data %>%
+#   complete(Industry, Ethnicity) %>%
+  ggplot(plot_data, aes(Industry, Percentage, fill = Ethnicity)) +
+  geom_col(position = position_dodge(width = dodge_val, preserve = "single")) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1),
+    panel.grid.minor.y = element_blank()
+  ) +
+  scale_fill_manual(values = colours) +
+  scale_y_continuous(breaks = seq(0,50,5), limits = c(0,50)) +
+  ggtitle("Employment by industry for Black and White individuals in Lambeth \nJuly 2020 - June 2021")
+
+ggsave("../images/industry.png", width = 6, height = 6)
+
+```
+
+\elandscape
+
+<!-- \newpage -->
+
+```{r}
+table_data <- industry_data %>%
+  mutate(
+    Percentage = round(Percentage, 2),
+    Ethnicity = as.factor(Ethnicity),
+    Industry = as.factor(Industry),
+  ) %>%
+  select(Industry, everything())
+
+table_data <- table_data[c(order(table_data$Industry, table_data$Ethnicity)),]
+write_csv(table_data, file = "../data/industry_data.csv")
+
+
+table_data %>%
+  kable(caption = "Employment by industry and ethnicity statistics", col.names = c("Industry", "Ethnicity", "Number employed","Population","Percentage"), row.names = F) %>%
+  kable_styling(latex_options = "hold_position") %>%
+  add_footnote("Note. As reported by the Office for National Statistics, fields marked 'NA' indicate values that are 'not available because the sample size is zero or disclosive (0-2)'", notation = "none")
+```
+
+<!-- \clearpage -->
+
+<!-- \newpage -->
+
+\blandscape
+
+# Occupation by ethnicity
+
+```{r fig.align = 'center', fig.width = 6, fig.height = 6}
+occupation_data <- read.csv("../data/occupation_by_ethnicity_to_jun_21.csv")
+
+plot_data <- occupation_data
+
+plot_data <- plot_data[rowSums(is.na(plot_data)) != ncol(plot_data) - 3,]
+
+dodge_val = 1 
+
+plot_data %>%
+  complete(Occupation, Ethnicity) %>% # to retain columns in position even with zero values
+  ggplot(aes(Occupation, Percentage, fill = Ethnicity)) +
+  geom_col(position = position_dodge(width = dodge_val)) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1),
+    panel.grid.minor.y = element_blank()
+  ) +
+  scale_fill_manual(values = colours) +
+  scale_y_continuous(breaks = seq(0,50,5), limits = c(0,45)) +
+  ggtitle("Employment by occupation for Black and White individuals in Lambeth \nJuly 2020 - June 2021")
+
+ggsave("../images/occupation.png", width = 7, height = 5)
+
+```
+
+\elandscape
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+```{r}
+table_data <- occupation_data %>%
+  mutate(
+    Percentage = round(Percentage, 2),
+    Ethnicity = as.factor(Ethnicity),
+    Occupation = as.factor(Occupation)
+  ) %>%
+  select(Occupation, everything())
+
+table_data <- table_data[c(order(table_data$Occupation, table_data$Ethnicity)),]
+
+write_csv(table_data, file = "../data/occupation_data.csv")
+
+table_data %>%
+  kable(caption = "Employment by occupation and ethnicity statistics", col.names = c("Occupation", "Ethnicity", "Number employed","Population","Percentage"), row.names = F) %>%
+  kable_styling(latex_options = "hold_position")  %>%
+  add_footnote("Note. As reported by the Office for National Statistics, fields marked 'NA' indicate values that are 'not available because the sample size is zero or disclosive (0-2)'", notation = "none")
+```
+
+# Author
+
+**Jolyon Miles-Wilson**
+
+jolyon.miles-wilson@blackthrive.org

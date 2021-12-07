@@ -1,0 +1,19 @@
+Ethnicity,Occupation,numerator,denominator,Percentage
+White,"Managers, directors & senior officials",19900,132800,14.98493976
+White,Professional occupations,55500,132800,41.79216867
+White,Associate prof. & technical occupations,37200,132800,28.01204819
+White,Administrative & secretarial occupations,6900,132800,5.195783133
+White,Skilled trades occupations,3500,132800,2.635542169
+White,"Caring, leisure and other occupations",2600,132800,1.957831325
+White,Sales & consumer service occupations,2300,132800,1.731927711
+White,"Process, plant & machine operatives",2000,132800,1.506024096
+White,Elementary occupations,2800,132800,2.108433735
+Black,"Managers, directors & senior officials",5700,34000,16.76470588
+Black,Professional occupations,2100,34000,6.176470588
+Black,Associate prof. & technical occupations,7500,34000,22.05882353
+Black,Administrative & secretarial occupations,2500,34000,7.352941176
+Black,Skilled trades occupations,NA,34000,NA
+Black,"Caring, leisure and other occupations",7000,34000,20.58823529
+Black,Sales & consumer service occupations,NA,34000,NA
+Black,"Process, plant & machine operatives",NA,34000,NA
+Black,Elementary occupations,6200,34000,18.23529412

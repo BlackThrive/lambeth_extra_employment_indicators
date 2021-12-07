@@ -1,0 +1,21 @@
+Ethnicity,Industry,numerator,denominator,Percentage
+White,Agriculture and fishing,NA,132800,NA
+White,Energy and water,NA,132800,NA
+White,Manufacturing,3800,132800,2.861445783
+White,Construction,4300,132800,3.237951807
+White,"Distribution, hotels and restaurants",12000,132800,9.036144578
+White,Transport and communication,29100,132800,21.9126506
+White,"Banking, finance and insurance",40600,132800,30.57228916
+White,"Public admin, education and health",37300,132800,28.0873494
+White,Other services,5700,132800,4.292168675
+White,Total services,124700,132800,93.90060241
+Black,Agriculture and fishing,NA,34000,NA
+Black,Energy and water,NA,34000,NA
+Black,Manufacturing,NA,34000,NA
+Black,Construction,NA,34000,NA
+Black,"Distribution, hotels and restaurants",3500,34000,10.29411765
+Black,Transport and communication,2600,34000,7.647058824
+Black,"Banking, finance and insurance",7600,34000,22.35294118
+Black,"Public admin, education and health",14600,34000,42.94117647
+Black,Other services,NA,34000,NA
+Black,Total services,31000,34000,91.17647059
