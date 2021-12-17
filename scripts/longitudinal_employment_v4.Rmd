@@ -1,0 +1,664 @@
+---
+title: "Employment in Lambeth 2015-present"
+author: "Black Thrive Global"
+date: "December 2021"
+output:
+  pdf_document: default
+  html_document: default
+header-includes: 
+  \usepackage{titling} 
+  \pretitle{\begin{center}\LARGE\includegraphics[width=6cm]{../images/btg_logo.png}\\[\bigskipamount]}
+  \posttitle{\end{center}} \usepackage{lscape} \newcommand{\blandscape}{\begin{landscape}}
+  \newcommand{\elandscape}{\end{landscape}}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(include = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+```{r}
+packages <- c('tidyverse',
+              'gmodels',
+              'epitools',
+              'kableExtra',
+              'ggrepel',
+              'DataCombine',
+              'lmtest',
+              'emmeans',
+              'ggsci')
+
+pkg_notinstall <- packages[!(packages %in% installed.packages()[,"Package"])]
+lapply(pkg_notinstall, install.packages, dependencies = TRUE)
+lapply(packages, library, character.only = TRUE)
+```
+
+```{r}
+colours <- c("#ff9000","black")
+```
+
+```{r}
+master_data <- read.csv("../data/longitudinal_employment.csv")
+
+
+# set levels of date to chronological
+master_data$Date <- factor(master_data$Date, levels = c(master_data$Date[1:22]))
+levels(master_data$Sex) <- c("Overall","Female","Male")
+master_data$Ethnicity <- factor(master_data$Ethnicity, levels = c("White","Black"))
+
+#master_data <- master_data[order((master_data$Date)),]
+
+data <- subset(master_data, Sex != "Overall")
+dates <- levels(data$Date)
+data$Sex <- factor(data$Sex, levels = c("Female","Male"))
+
+for(i in 1:nrow(data)){
+  for(j in 1:length(dates)){
+    if(data$Date[i] == dates[j]){
+    data$time_dummy[i] = j
+    }
+  }
+}
+
+rownames(data) <- seq(length = nrow(data)) # reset row numbers
+```
+
+
+
+```{r}
+mod <- lm(Percentage ~ time_dummy + Sex + Ethnicity, data)
+summary(mod)
+
+mod_2 <- update(mod, ~. + Sex:Ethnicity)
+summary(mod_2)
+
+mod_3 <- lm(Percentage ~ time_dummy * Sex * Ethnicity, data)
+summary(mod_3)
+
+anova(mod, mod_2, mod_3) # best fitting model is one with 3-way interaction
+```
+
+
+```{r}
+# autocorrelation
+acf(mod_3$residuals)
+
+dwtest(mod_3)
+
+rectify_data <- data.frame(data, resid_mod_1 = mod_3$residuals)
+rectify_data_1 <- slide(rectify_data, Var = "resid_mod_1", NewVar = "lag1", slideBy = -1)
+rectify_data_2 <- na.omit(rectify_data_1)
+
+mod_3_rectified <- lm(Percentage ~ time_dummy * Sex * Ethnicity + lag1, data = rectify_data_2)
+summary(mod_3_rectified)
+acf(mod_3_rectified$residuals)
+dwtest(mod_3_rectified)
+# accounting for autocorrelation at lag1 and lag4 resolves issue and shows that effects remain significant.
+```
+
+```{r}
+rectify_data_3 <- data.frame(rectify_data_2, resid_mod_2 = mod_3_rectified$residuals)
+rectify_data_4 <- slide(rectify_data_3, Var = "resid_mod_2", NewVar = "lag4", slideBy = -4)
+rectify_data_5 <- na.omit(rectify_data_4)
+
+mod_3_rectified_2 <- lm(Percentage ~ time_dummy * Sex * Ethnicity + lag1 + lag4, data = rectify_data_5)
+summary(mod_3_rectified_2)
+acf(mod_3_rectified_2$residuals)
+dwtest(mod_3_rectified_2)
+```
+
+
+```{r post_hocs}
+ems <- emtrends(mod_3_rectified_2, specs = c("Ethnicity","Sex"), var = "time_dummy")
+
+ems_test <- test(ems)
+
+ems_2 <- emtrends(mod_3_rectified_2, specs = c("Ethnicity"), var = "time_dummy")
+ems_2_test <- test(ems_2) %>%
+  mutate(
+    Sex = "Overall"
+  ) %>%
+  relocate(
+    Sex, .after = Ethnicity
+  )
+
+combined_ems <- rbind(ems_test, ems_2_test)
+```
+
+```{r fig.height = 8, fig.width = 7, warning = FALSE}
+plot_data <- master_data
+
+plot_data <- merge(plot_data, combined_ems, by = c("Ethnicity","Sex"))
+
+# pos_dummy_white <- 45 * which(levels(plot_data$Ethnicity) == "White")
+# pos_dummy_black <- 45 * which(levels(plot_data$Ethnicity) == "Black")
+# 
+# temp_df <- plot_data
+# levels(temp_df$Ethnicity) <- c("1","2")
+# 
+# 
+# white_ems <- subset(combined_ems, Ethnicity == "White")
+# black_ems <- subset(combined_ems, Ethnicity == "Black")
+# 
+# white_ems$pos_dummy <- 45 * as.numeric(which(levels(plot_data$Ethnicity) == "Black")) # swap positions round
+# black_ems$pos_dummy <- 45 * as.numeric(which(levels(plot_data$Ethnicity) == "White"))
+# 
+# 
+# ggplot(plot_data, aes(Date, Percentage, colour = Ethnicity, group = Ethnicity)) +
+#   facet_grid(rows = vars(Sex)) +
+#   geom_line() +
+#   theme_bw() + 
+#   theme(
+#     axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1)
+#     ) +
+#   scale_colour_manual(values = colours) +
+#   geom_smooth(method = lm, formula = y ~ x, alpha = 0.25) +
+#   geom_text(inherit.aes = F, data = white_ems, aes(x = length(unique(plot_data$Date)) - 2, y = pos_dummy, colour = Ethnicity, label = paste0("b = ", round(time_dummy.trend,2)))) +
+#   geom_text(inherit.aes = F, data = black_ems, aes(x = length(unique(plot_data$Date)) - 2, y = pos_dummy, colour = Ethnicity, label = paste0("b = ", round(time_dummy.trend,2))))
+
+# create postion values for b labels
+
+plot_data$xpos <- NA
+plot_data$ypos <- NA
+
+for(i in 1:nrow(plot_data)){
+  if(plot_data$Date[i] == levels(plot_data$Date)[length(unique(plot_data$Date)) - 2]){ # this defines the x position.
+    if(plot_data$Ethnicity[i] == "White"){
+      plot_data$ypos[i] <- plot_data$Percentage[i] + 10 # for white line ypos, take percentage and add 10
+    }
+    else{
+      plot_data$ypos[i] <- plot_data$Percentage[i] - 10  # for black line ypos, take percentage and subtract 10
+    }
+    plot_data$xpos[i] <- length(unique(plot_data$Date)) - 2 
+  }
+}
+
+
+new_df <- data.frame(time_dummy = rep(seq(1,26,1),4),
+                     Ethnicity = c(rep("Black", (26*4)/2), rep("White", (26*4)/2)),
+                     Sex = rep(c(rep("Female", (26*4)/4),rep("Male", (26*4)/4)),2))
+
+
+preds <- predict(mod_3, newdata = new_df, interval = "confidence") # base on mod_3 because this is full dataset
+
+predicted_values <- cbind(new_df, preds)
+
+
+
+
+first_lockdown_start <- which(levels(plot_data$Date) == "Apr 2019-Mar 2020")
+second_lockdown_start <- which(levels(plot_data$Date) == "Oct 2019-Sep 2020") + (1/3)
+brexit_vote <- which(levels(plot_data$Date) == "Jul 2015-Jun 2016")
+general_election <- which(levels(plot_data$Date) == "Jul 2016-Jun 2017")
+local_election <- which(levels(plot_data$Date) == "Apr 2017-Mar 2018") + (2/3)
+
+yend <- 105
+txt_pos_y <- yend * 1.05
+
+new_breaks <- c(levels(plot_data$Date), c("Oct 2020-Sep 2021", "Jan 2021-Dec 2021", "Apr 2021-Mar 2022", "Jul 2021-Jun 2022"))
+
+ggplot(plot_data, aes(Date, Percentage, colour = Ethnicity, group = Ethnicity)) +
+  facet_grid(rows = vars(Sex)) +
+  geom_line() +
+  theme_bw() + 
+  theme(
+    axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1),
+    strip.background = element_rect(fill = "white")
+    ) +
+  scale_colour_manual(values = colours) +
+  geom_smooth(method = lm, formula = y ~ x, alpha = 0.25) +
+  geom_text(aes(xpos, ypos, label = paste0("b = ", round(time_dummy.trend,2),", p = ", round(p.value,3)), colour = Ethnicity), fontface = "italic") +
+  ylab("Employment rate (%)") +
+  geom_segment(aes(x = first_lockdown_start, xend = first_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = first_lockdown_start, y = txt_pos_y, label = "First lockdown", hjust = 0, size = 3, angle = 45) +
+  geom_segment(aes(x = second_lockdown_start, xend = second_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = second_lockdown_start, y = txt_pos_y, label = "Second lockdown", hjust = 0, size = 3, angle = 45) +
+  scale_y_continuous(expand = expansion(mult = c(0.08,.6)), breaks = seq(30,100,10)) + 
+  geom_line(inherit.aes = F, data = predicted_values, aes(time_dummy, fit, colour = Ethnicity, group = Ethnicity)) +
+  geom_ribbon(inherit.aes = F, data = predicted_values, aes(time_dummy, ymin = lwr, ymax = upr, group = Ethnicity), alpha = 0.2) +
+  scale_x_discrete() # expansion allows to specify for different expansion at each end 
+
+```
+
+```{r}
+
+female_data <- plot_data %>%
+  subset(Sex == "Female")
+
+female_preds <- subset(predicted_values, Sex == "Female")
+
+male_data <- plot_data %>%
+  subset(Sex == "Male")
+
+male_preds <- subset(predicted_values, Sex == "Male")
+
+```
+
+```{r}
+
+adj_rsquare <- round(100 * (summary(mod_3_rectified_2)$adj.r.squared), 2)
+time_coef <- round(mod_3_rectified_2[["coefficients"]][["time_dummy"]], 2)
+ethnicity_coef <- round(mod_3_rectified_2[["coefficients"]][["EthnicityBlack"]], 2)
+sex_coef <- round(mod_3_rectified_2[["coefficients"]][["SexMale"]], 2)
+
+w_women_coef <- subset(combined_ems, Ethnicity == "White" & Sex == "Female")
+b_women_coef <- subset(combined_ems, Ethnicity == "Black" & Sex == "Female")
+w_men_coef <- subset(combined_ems, Ethnicity == "White" & Sex == "Male")
+b_men_coef <- subset(combined_ems, Ethnicity == "Black" & Sex == "Male")
+
+
+summary(mod_3_rectified_2)
+ems_3 <- emmeans(mod_3_rectified_2, specs = "Sex", by = "Ethnicity")
+contrast(ems_3)
+ems_4 <- emmeans(mod_3_rectified_2, specs = "Ethnicity", by = "Sex")
+contrast(ems_4)
+combined_ems
+```
+
+\newpage 
+
+# Introduction
+
+This document provides a provisional analysis of employment rates for Black and White people in Lambeth since April 2015. Data were acquired from the *Annual Population Survey* via the Office for National Statistics. The data were analysed accounting for differences in ethnicity and sex to provide a disaggregated picture of employment for Black and White males and females in Lambeth.
+
+# Results 
+
+After accounting for differences in ethnicity and sex, employment rate for Black and White individuals combined has decreased by approximately `r abs(time_coef)`% per quarter since 2015. In this period, the employment rate for Black individuals was on average `r abs(ethnicity_coef)`% lower than the employment rate for White individuals. The projection in the plot below suggests that the employment gap between Black and White residents is reducing. However, as considered below, this overall effect masks differences in the trends over time by ethnicity and sex. Specifically, employment rate is decreasing for White women and Black men, increasing for Black women, and neither increasing nor decreasing for White men. Thus, the apparent trend towards parity suggested by the below plot is due to a decrease in White women's employment rate combined with increases in Black women's employment rate (which neutralises the downward trend in employment amongst Black men).
+
+```{r}
+# produces exactl same estimate as taking average of male and female, but difference interval
+overall_mod <- lm(Percentage ~ Ethnicity*time_dummy, data)
+summary(overall_mod)
+
+ems <- emtrends(overall_mod, specs = c("Ethnicity"), var = "time_dummy")
+
+test(ems)
+
+overall_df <- data.frame(time_dummy = rep(seq(23,26,1),2),
+                    Ethnicity = c(rep("Black", 4), rep("White", 4)))
+                    
+overall_preds_2 <- predict(overall_mod, newdata = overall_df, interval = "confidence")
+
+overall_preds_2 <- cbind(overall_df, overall_preds_2)
+```
+
+```{r}
+# overall_mod <- lm(Percentage ~ Ethnicity*time_dummy, data)
+# summary(overall_mod)
+# 
+# ems <- emtrends(overall_mod, specs = c("Ethnicity"), var = "time_dummy")
+# 
+# test(ems)
+# 
+# overall_df <- data.frame(time_dummy = c(plot_data$time_dummy, rep(seq(23,26,1),2)),
+#                     Ethnicity = c(plot_data$Ethnicity, c(rep("Black", 4), rep("White", 4))))
+# 
+# overall_preds_2 <- predict(overall_mod, newdata = overall_df, interval = "confidence")
+# 
+# overall_preds_2 <- cbind(overall_df, overall_preds_2)
+```
+
+```{r overall_plot, include = TRUE}
+overall_data <- plot_data %>%
+  subset(Sex == "Overall")
+
+
+overall_preds <-  data.frame(time_dummy = rep(seq(1,26,1), 2),
+                     Ethnicity = c(rep("Black", (26*2)/2), rep("White", (26*2)/2))) %>%
+  mutate(
+    fit = rowMeans(cbind(male_preds$fit, female_preds$fit)),
+    lwr = rowMeans(cbind(male_preds$lwr, female_preds$lwr)),
+    upr = rowMeans(cbind(male_preds$upr, female_preds$upr)),
+  )
+
+ggplot(overall_data, aes(Date, Percentage, colour = Ethnicity, group = Ethnicity)) +
+  #facet_grid(rows = vars(Sex)) +
+  geom_line() +
+  theme_bw() + 
+  theme(
+    axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1),
+    strip.background = element_rect(fill = "white")
+    ) +
+  scale_colour_manual(values = colours) +
+  #geom_smooth(method = lm, formula = y ~ x, alpha = 0.25) +
+  ylab("Employment rate (%)") +
+  
+  # events  
+  geom_segment(aes(x = brexit_vote, xend = brexit_vote, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = brexit_vote, y = txt_pos_y, label = "Brexit vote", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = general_election, xend = general_election, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = general_election, y = txt_pos_y, label = "General election", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = local_election, xend = local_election, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = local_election, y = txt_pos_y, label = "Local election", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = first_lockdown_start, xend = first_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = first_lockdown_start, y = txt_pos_y, label = "First lockdown", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = second_lockdown_start, xend = second_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = second_lockdown_start, y = txt_pos_y, label = "Second lockdown", hjust = 0.5, size = 3, angle = 45) +
+  
+  scale_y_continuous(expand = expansion(mult = c(0.08,.2)), breaks = seq(30,100,10)) + 
+  scale_x_discrete(limits = new_breaks, breaks = new_breaks) + # need to specifi limits for breaks to allow them to appear
+                   #expand = expansion(mult = c(0.01, 0.2))) +# expansion allows to specify for different expansion at each end 
+
+  geom_line(inherit.aes = F, data = overall_preds, aes(time_dummy, fit, colour = Ethnicity, group = Ethnicity), size = 1) +
+  geom_ribbon(inherit.aes = F, data = overall_preds, aes(time_dummy, ymin = lwr, ymax = upr, group = Ethnicity), alpha = 0.1) +
+  ggtitle("Employment rate since April 2015 for Black and White people in Lambeth") +
+  annotate("rect",xmin = 22, xmax = 26, ymin = -Inf, ymax = Inf, fill = "blue", alpha = 0.1) +
+  annotate("text", x = mean(c(22,26)), y = txt_pos_y, label = "Projection", hjust = 0.5, size = 3, colour = "red") +
+  geom_text(aes(xpos, ypos, label = paste0("b = ", round(time_dummy.trend,2),", p = ", round(p.value,3)), colour = Ethnicity), fontface = "italic")
+
+
+```
+
+\newpage
+
+## Women
+
+As alluded to above, the employment rate for Lambeth residents varies over time, ethnicity, and sex. The employment rate has been decreasing by `r abs(round(w_women_coef$time_dummy.trend, 2))`% per quarter amongst White women, whereas for Black women it has been increasing by `r abs(round(b_women_coef$time_dummy.trend, 2))`% per quarter. With this combination of trends, a projection for the next 12 months suggests that the employment rates of Black and White women in Lambeth in September 2021 will be more or less equal from September 2021 onwards.
+
+```{r female_plot, include = TRUE}
+
+
+ggplot(female_data, aes(Date, Percentage, colour = Ethnicity, group = Ethnicity)) +
+  #facet_grid(rows = vars(Sex)) +
+  geom_line() +
+  theme_bw() + 
+  theme(
+    axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1),
+    strip.background = element_rect(fill = "white")
+    ) +
+  scale_colour_manual(values = colours) +
+  #geom_smooth(method = lm, formula = y ~ x, alpha = 0.25) +
+  ylab("Employment rate (%)") +
+  
+  # events  
+  geom_segment(aes(x = brexit_vote, xend = brexit_vote, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = brexit_vote, y = txt_pos_y, label = "Brexit vote", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = general_election, xend = general_election, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = general_election, y = txt_pos_y, label = "General election", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = local_election, xend = local_election, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = local_election, y = txt_pos_y, label = "Local election", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = first_lockdown_start, xend = first_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = first_lockdown_start, y = txt_pos_y, label = "First lockdown", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = second_lockdown_start, xend = second_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = second_lockdown_start, y = txt_pos_y, label = "Second lockdown", hjust = 0.5, size = 3, angle = 45) +
+  
+  scale_y_continuous(expand = expansion(mult = c(0.08,.2)), breaks = seq(30,100,10)) + 
+
+  scale_x_discrete(limits = new_breaks, breaks = new_breaks) + # need to specify limits for breaks to allow them to appear
+                   #expand = expansion(mult = c(0.01, 0.2))) +# expansion allows to specify for different expansion at each end 
+
+  geom_line(inherit.aes = F, data = female_preds, aes(time_dummy, fit, colour = Ethnicity, group = Ethnicity), size = 1) +
+  geom_ribbon(inherit.aes = F, data = female_preds, aes(time_dummy, ymin = lwr, ymax = upr, group = Ethnicity), alpha = 0.1) +
+  ggtitle("Employment rate since April 2015 for Black and White women in Lambeth") +
+  annotate("rect",xmin = 22, xmax = 26, ymin = -Inf, ymax = Inf, fill = "blue", alpha = 0.1) +
+  annotate("text", x = mean(c(22,26)), y = txt_pos_y, label = "Projection", hjust = 0.5, size = 3, colour = "red") +
+  geom_text(aes(xpos, ypos, label = paste0("b = ", round(time_dummy.trend,2),", p = ", round(p.value,3)), colour = Ethnicity), fontface = "italic")
+
+
+  
+```
+
+\newpage
+
+## Men
+
+The employment rate for White men has remained stable since 2015, with no evidence of a significant trend up or down. In contrast, employment rate for Black men has been decreasing by `r abs(round(b_men_coef$time_dummy.trend, 2))`% per quarter. It is important to note that the employment rate for Black men has been subject to considerably more variability over this period, with a peak in employment in Q3 2019 matching the employment rate of White men (`r round(male_data$Percentage[which(male_data$Date == "Oct 2018-Sep 2019" & male_data$Ethnicity == "Black")],2)`% for Black men vs. `r round(male_data$Percentage[which(male_data$Date == "Oct 2018-Sep 2019" & male_data$Ethnicity == "White")],2)`% for White men), followed by a considerable drop one year later in Q3 2020 (`r round(male_data$Percentage[which(male_data$Date == "Oct 2019-Sep 2020" & male_data$Ethnicity == "Black")],2)`% for Black men vs. `r round(male_data$Percentage[which(male_data$Date == "Oct 2019-Sep 2020" & male_data$Ethnicity == "White")],2)`% for White men). Projections based on these trends suggest that amongst men the gap in employment rate will continue to widen.
+
+
+```{r male_plot, include = TRUE}
+
+
+ggplot(male_data, aes(Date, Percentage, colour = Ethnicity, group = Ethnicity)) +
+  #facet_grid(rows = vars(Sex)) +
+  geom_line() +
+  theme_bw() + 
+  theme(
+    axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1),
+    strip.background = element_rect(fill = "white")
+    ) +
+  scale_colour_manual(values = colours) +
+  #geom_smooth(method = lm, formula = y ~ x, alpha = 0.25) +
+  ylab("Employment rate (%)") +
+  
+  # events  
+  geom_segment(aes(x = brexit_vote, xend = brexit_vote, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = brexit_vote, y = txt_pos_y, label = "Brexit vote", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = general_election, xend = general_election, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = general_election, y = txt_pos_y, label = "General election", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = local_election, xend = local_election, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = local_election, y = txt_pos_y, label = "Local election", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = first_lockdown_start, xend = first_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = first_lockdown_start, y = txt_pos_y, label = "First lockdown", hjust = 0.5, size = 3, angle = 45) +
+  geom_segment(aes(x = second_lockdown_start, xend = second_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  annotate("text", x = second_lockdown_start, y = txt_pos_y, label = "Second lockdown", hjust = 0.5, size = 3, angle = 45) +
+  
+  scale_y_continuous(expand = expansion(mult = c(0.08,.2)), breaks = seq(30,100,10)) + 
+  scale_x_discrete(limits = new_breaks, breaks = new_breaks) + # need to specifi limits for breaks to allow them to appear
+                   #expand = expansion(mult = c(0.01, 0.2))) +# expansion allows to specify for different expansion at each end 
+
+  geom_line(inherit.aes = F, data = male_preds, aes(time_dummy, fit, colour = Ethnicity, group = Ethnicity), size = 1) +
+  geom_ribbon(inherit.aes = F, data = male_preds, aes(time_dummy, ymin = lwr, ymax = upr, group = Ethnicity), alpha = 0.1) +
+  ggtitle("Employment rate since April 2015 for Black and White men in Lambeth") +
+  annotate("rect", xmin = 22, xmax = 26, ymin = -Inf, ymax = Inf, fill = "blue", alpha = 0.1) +
+  annotate("text", x = mean(c(22,26)), y = txt_pos_y, label = "Projection", hjust = 0.5, size = 3, colour = "red") +
+  geom_text(aes(xpos, ypos, label = paste0("b = ", round(time_dummy.trend,2),", p = ", round(p.value,3)), colour = Ethnicity), fontface = "italic") 
+
+
+```
+
+\newpage
+
+## Employment by Occupation
+
+```{r}
+occupation_data <- read.csv("../data/occupation_by_ethnicity_long_2.csv")
+occ_data <- occupation_data %>%
+  mutate_all(
+    ~replace(.,. == "!", NA)
+  ) %>%
+  mutate_all(
+    ~replace(., .== "#VALUE!", NA)
+  ) %>%
+  mutate(
+    Numerator = as.numeric(Numerator),
+    Percentage = as.numeric(Percentage)
+  )
+occ_data$Date <- factor(occ_data$Date, levels = c("Apr 2015-Mar 2016",
+                                                  "Jul 2015-Jun 2016",
+                                                  "Oct 2015-Sep 2016",
+                                                  "Jan 2016-Dec 2016",
+                                                  "Apr 2016-Mar 2017",
+                                                  "Jul 2016-Jun 2017",
+                                                  "Oct 2016-Sep 2017",
+                                                  "Jan 2017-Dec 2017",
+                                                  "Apr 2017-Mar 2018",
+                                                  "Jul 2017-Jun 2018",
+                                                  "Oct 2017-Sep 2018",
+                                                  "Jan 2018-Dec 2018",
+                                                  "Apr 2018-Mar 2019",
+                                                  "Jul 2018-Jun 2019",
+                                                  "Oct 2018-Sep 2019",
+                                                  "Jan 2019-Dec 2019",
+                                                  "Apr 2019-Mar 2020",
+                                                  "Jul 2019-Jun 2020",
+                                                  "Oct 2019-Sep 2020",
+                                                  "Jan 2020-Dec 2020",
+                                                  "Apr 2020-Mar 2021",
+                                                  "Jul 2020-Jun 2021"))
+```
+
+It may be informative to consider how the volatility in Black men's employment rate evident above corresponds to changes in employment by occupation (see Appendix for definitions of the relevant occupations according to the ONS Standard Occupational Classification Hierarchy 2010). The plot below visualises the percentage of Black individuals (both men and women) in Lambeth employed by occupation. The green shaded area of the plot indicates the period over which Black men's employment was rising, and the red shaded area indicates the period over which Black men's employment was falling. 
+
+Inspection of the plot shows that employment increases amongst Black men correspond to increases in the percentage of Black people employed in "Associate Professional and Technical Occupations" and, to a lesser extent, "Sales and Consumer Service Occupations". The decreases in Black men's employment corresponds to a subsequent decrease in employment in "Associate Professional and Technical Occupations" as well as a decrease in the percentage of Black individuals employed in "Elementary Occupations". 
+
+```{r include = TRUE, dpi = 300}
+male_employ_up_start <- which(levels(occ_data$Date) == "Jan 2018-Dec 2018")
+male_employ_up_end <- which(levels(occ_data$Date) == "Oct 2018-Sep 2019")
+
+male_employ_down_start <- which(levels(occ_data$Date) == "Oct 2018-Sep 2019")
+male_employ_down_end <- which(levels(occ_data$Date) == "Oct 2019-Sep 2020")
+
+plot_data <- subset(occ_data, Ethnicity == "Black")
+
+yend <- 40
+txt_pos_y <- yend * 1.2
+
+ggplot(plot_data, aes(Date, Percentage, colour = Occupation, group = Occupation)) +
+  geom_line() +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 70, hjust = 1)
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.08,0.15)), breaks = seq(0,40,10)) +
+  annotate("rect", xmin = male_employ_up_start, xmax = male_employ_up_end, ymin = -Inf, ymax = Inf, fill = "green", alpha = .1) +
+  annotate("rect", xmin = male_employ_down_start, xmax = male_employ_down_end, ymin = -Inf, ymax = Inf, fill = "red", alpha = .1) +
+  # geom_text(aes(x = mean(c(male_employ_up_start, male_employ_up_end)), y = txt_pos_y , label = "Increase in \nBlack male \nemployment"), colour = "dark green", hjust = 0.5, size = 2, angle = 0) +
+  # geom_text(aes(x = mean(c(male_employ_down_start, male_employ_down_end)), y = txt_pos_y * .8, label = "Decrease in \nBlack male \nemployment"), colour = "dark red", hjust = 0.5, size = 2, colour = "red") +
+  scale_colour_lancet() +
+  ylab("Employment rate (%)") +
+  ggtitle("Employment rate by occupation for Black individuals in Lambeth")
+  #scale_colour_brewer(palette = "Dark2")
+
+  # geom_rect(aes(xmin = male_employ_up_start, xmax = male_employ_up_end, ymin = -Inf, ymax = Inf), fill = "green", alpha = .01) +
+  # geom_rect(aes(xmin = male_employ_down_start, xmax = male_employ_down_end, ymin = -Inf, ymax = Inf), fill = "red", alpha = .01)
+
+
+  # events  
+  #geom_segment(aes(x = brexit_vote, xend = brexit_vote, y = -Inf, yend = yend), colour = "grey") 
+  # geom_segment(aes(x = general_election, xend = general_election, y = -Inf, yend = 105), colour = "grey") +
+  # annotate("text", x = general_election, y = txt_pos_y, label = "General election", hjust = 0.5, size = 3, angle = 45) +
+  # geom_segment(aes(x = local_election, xend = local_election, y = -Inf, yend = 105), colour = "grey") +
+  # annotate("text", x = local_election, y = txt_pos_y, label = "Local election", hjust = 0.5, size = 3, angle = 45) +
+  # geom_segment(aes(x = first_lockdown_start, xend = first_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  # annotate("text", x = first_lockdown_start, y = txt_pos_y, label = "First lockdown", hjust = 0.5, size = 3, angle = 45) +
+  # geom_segment(aes(x = second_lockdown_start, xend = second_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  # annotate("text", x = second_lockdown_start, y = txt_pos_y, label = "Second lockdown", hjust = 0.5, size = 3, angle = 45)
+  
+```
+
+\newpage
+
+## Employment by Industry
+
+```{r}
+industry_data <- read.csv("../data/industry_ethnicity_longitudinal.csv")
+ind_data <- industry_data %>%
+  mutate_all(
+    ~replace(.,. == "!", NA)
+  ) %>%
+  mutate_all(
+    ~replace(., .== "#VALUE!", NA)
+  ) %>%
+  mutate(
+    Numerator = as.numeric(Numerator),
+    Percentage = as.numeric(Percentage)
+  )
+ind_data$Date <- factor(ind_data$Date, levels = c("Apr 2015-Mar 2016",
+                                                  "Jul 2015-Jun 2016",
+                                                  "Oct 2015-Sep 2016",
+                                                  "Jan 2016-Dec 2016",
+                                                  "Apr 2016-Mar 2017",
+                                                  "Jul 2016-Jun 2017",
+                                                  "Oct 2016-Sep 2017",
+                                                  "Jan 2017-Dec 2017",
+                                                  "Apr 2017-Mar 2018",
+                                                  "Jul 2017-Jun 2018",
+                                                  "Oct 2017-Sep 2018",
+                                                  "Jan 2018-Dec 2018",
+                                                  "Apr 2018-Mar 2019",
+                                                  "Jul 2018-Jun 2019",
+                                                  "Oct 2018-Sep 2019",
+                                                  "Jan 2019-Dec 2019",
+                                                  "Apr 2019-Mar 2020",
+                                                  "Jul 2019-Jun 2020",
+                                                  "Oct 2019-Sep 2020",
+                                                  "Jan 2020-Dec 2020",
+                                                  "Apr 2020-Mar 2021",
+                                                  "Jul 2020-Jun 2021"))
+```
+
+The pattern of employment by industry suggests that in the same period that Black men's employment rate increased (green area), employment in "Distribution, hotels, and restaurants", "Banking, finance, and insurance", and "Other services" increased, whilst employment in "Public administration, education and health" and "Transport and Communication" decreased.
+
+The period of time over which Black men's employment decreased (red area) corresponded to decreases in employment in "Distribution, hotels and restaurants" and "Other services", and an increase in employment in "Public administration, education, and health" and "Banking, finance, and insurance."
+
+```{r include = TRUE, dpi = 300}
+male_employ_up_start <- which(levels(ind_data$Date) == "Jan 2018-Dec 2018")
+male_employ_up_end <- which(levels(ind_data$Date) == "Oct 2018-Sep 2019")
+
+male_employ_down_start <- which(levels(ind_data$Date) == "Oct 2018-Sep 2019")
+male_employ_down_end <- which(levels(ind_data$Date) == "Oct 2019-Sep 2020")
+
+plot_data <- subset(ind_data, Ethnicity == "Black")
+
+yend <- 40
+txt_pos_y <- yend * 1.2
+
+ggplot(plot_data, aes(Date, Percentage, colour = Industry, group = Industry)) +
+  geom_line() +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 70, hjust = 1)
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.08,0.15)), breaks = seq(0,40,10)) +
+  annotate("rect", xmin = male_employ_up_start, xmax = male_employ_up_end, ymin = -Inf, ymax = Inf, fill = "green", alpha = .1) +
+  annotate("rect", xmin = male_employ_down_start, xmax = male_employ_down_end, ymin = -Inf, ymax = Inf, fill = "red", alpha = .1) +
+  # geom_text(aes(x = mean(c(male_employ_up_start, male_employ_up_end)), y = txt_pos_y *1.1 , label = "Increase in \nBlack male \nemployment"), colour = "dark green", hjust = 0.5, size = 2.7, angle = 0) +
+  # geom_text(aes(x = mean(c(male_employ_down_start, male_employ_down_end)), y = txt_pos_y * .9, label = "Decrease in \nBlack male \nemployment"), colour = "dark red", hjust = 0.5, size = 2.7, colour = "red", angle = 0) +
+  scale_colour_lancet() +
+  ylab("Employment rate (%)") +
+  ggtitle("Employment rate by industry for Black individuals in Lambeth")
+  #scale_colour_brewer(palette = "Dark2")
+
+  # geom_rect(aes(xmin = male_employ_up_start, xmax = male_employ_up_end, ymin = -Inf, ymax = Inf), fill = "green", alpha = .01) +
+  # geom_rect(aes(xmin = male_employ_down_start, xmax = male_employ_down_end, ymin = -Inf, ymax = Inf), fill = "red", alpha = .01)
+
+
+  # events  
+  #geom_segment(aes(x = brexit_vote, xend = brexit_vote, y = -Inf, yend = yend), colour = "grey") 
+  # geom_segment(aes(x = general_election, xend = general_election, y = -Inf, yend = 105), colour = "grey") +
+  # annotate("text", x = general_election, y = txt_pos_y, label = "General election", hjust = 0.5, size = 3, angle = 45) +
+  # geom_segment(aes(x = local_election, xend = local_election, y = -Inf, yend = 105), colour = "grey") +
+  # annotate("text", x = local_election, y = txt_pos_y, label = "Local election", hjust = 0.5, size = 3, angle = 45) +
+  # geom_segment(aes(x = first_lockdown_start, xend = first_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  # annotate("text", x = first_lockdown_start, y = txt_pos_y, label = "First lockdown", hjust = 0.5, size = 3, angle = 45) +
+  # geom_segment(aes(x = second_lockdown_start, xend = second_lockdown_start, y = -Inf, yend = 105), colour = "grey") +
+  # annotate("text", x = second_lockdown_start, y = txt_pos_y, label = "Second lockdown", hjust = 0.5, size = 3, angle = 45)
+  
+```
+
+
+It should be noted that because the occupation and industry data combines data for both male and female individuals, it is not possible to infer with any confidence that the patterns observed in the two plots above are truly related to men's employment rates. The plot is therefore presented only for the purposes of providing anecdotal, non-definitive insight.
+
+# Authors
+
+This document was produced by the Research Team at Black Thrive Global:
+
+Jolyon Miles-Wilson
+
+Dr Celestin Okoroji
+
+Any questions, comments, and/or feedback are greatly appreciated. Please contact us at research@blackthrive.org, FAO Jolyon Miles-Wilson.
+
+# Appendix
+
+## Standard Occupational Classifications 2010
+
+### Associate Professional and Technical Occupations
+
+*This major group covers occupations whose main tasks require experience and knowledge of principles and practices necessary to assume operational responsibility and to give technical support to Professionals and to Managers, Directors and Senior Officials.*
+
+*The main tasks involve the operation and maintenance of complex equipment; legal, business, financial and design services; the provision of information technology services; providing skilled support to health and social care professionals; serving in protective service occupations; and managing areas of the natural environment. Culture, media and sports occupations are also included in this major group. Most occupations in this major group will have an associated high-level vocational qualification, often involving a substantial period of full-time training or further study. Some additional task-related training is usually provided through a formal period of induction.*
+
+### Sales and Customer Service Occupations
+
+*This major group covers occupations whose tasks require the knowledge and experience necessary to sell goods and services, accept payment in respect of sales, replenish stocks of goods in stores, provide information to potential clients and additional services to customers after the point of sale. The main tasks involve knowledge of sales techniques, a degree of knowledge regarding the product or service being sold, familiarity with cash and credit handling procedures and a certain amount of record keeping associated with those tasks.*
+
+*Most occupations in this major group require a general education and skills in interpersonal communication. Some occupations will require a degree of specific knowledge regarding the product or service being sold, but are included in this major group because the primary task involves selling. *
+
+### Elementary occupations
+
+*This major group covers occupations which require the knowledge and experience necessary to perform mostly routine tasks, often involving the use of simple hand-held tools and, in some cases, requiring a degree of physical effort.*
+
+*Most occupations in this major group do not require formal educational qualifications but will usually have an associated short period of formal experience-related training. *
