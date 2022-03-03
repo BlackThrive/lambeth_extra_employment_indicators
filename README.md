@@ -83,11 +83,11 @@ The script uses the following R packages. These need to be installed using <b>in
 
 Once downloaded, unzip to a destination of your choice. Be sure to retain the original folder structure.
 
-Use **lambeth_sms.Rproj** to open project. 
+Use **employment_indicators.Rproj** to open project. 
 
-To load the analysis script, use *File > Open File*, navigate to the ***scripts*** folder, and select **analysis.Rmd**. To run the script, select *Run > Run all* (Ctrl + Alt + R [Windows]; Cmd + Option + R[Mac]).
+To load the analysis script, use *File > Open File*, navigate to the ***scripts*** folder, and select **analysis.Rmd**, or **scripts/longitudinal_employment_v4.Rmd**. To run the script, select *Run > Run all* (Ctrl + Alt + R [Windows]; Cmd + Option + R[Mac]).
 
-If you just want to view the knitted html document, using your system file navigator navigate to the scripts folder and open **analysis.pdf**.
+If you just want to view the knitted markdowns, using your system file navigator navigate to the scripts folder and open **analysis.pdf** or **longitudinal_employment_v4.pdf**.
 
 
 ## Contact
